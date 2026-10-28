@@ -2,6 +2,13 @@
 
 All notable changes to `hix` are documented here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses [Semantic Versioning](https://semver.org/).
 
+## [0.2.0] - 2026-10-28
+
+### Added
+
+- LockLens support: `hix doctor` reports it, the auto plan explains when it needs an explicit pair, and `hix init` writes a commented `[checks.locklens]` example.
+- README examples now show the five-tool plan and the LockLens count mapping.
+
 ## [0.1.0] - 2026-10-28
 
 ### Added
@@ -18,4 +25,5 @@ All notable changes to `hix` are documented here. The format follows [Keep a Cha
 - Distinct `fail` and `error` states; missing tools are `skipped`, never `ok`.
 - Python 3.11+ package, typed public modules, MIT license.
 
+[0.2.0]: https://github.com/hix-pro/hix/releases/tag/v0.2.0
 [0.1.0]: https://github.com/hix-pro/hix/releases/tag/v0.1.0

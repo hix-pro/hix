@@ -52,13 +52,13 @@ def project(tmp_path: Path) -> Path:
 
 def test_version_plain(capsys) -> None:
     assert main(["version"]) == 0
-    assert capsys.readouterr().out.strip() == "hix 0.1.0"
+    assert capsys.readouterr().out.strip() == "hix 0.2.0"
 
 
 def test_version_json(capsys) -> None:
     assert main(["version", "--json"]) == 0
     payload = json.loads(capsys.readouterr().out)
-    assert payload == {"name": "hix", "version": "0.1.0"}
+    assert payload == {"name": "hix", "version": "0.2.0"}
 
 
 def test_no_command_prints_help(capsys) -> None:
@@ -135,7 +135,13 @@ def test_doctor_json(project: Path, capsys) -> None:
 
     assert payload["root"] == str(project)
     names = [row["name"] for row in payload["checks"]]
-    assert names[:4] == ["envaudit", "migration-guard", "apiwatch", "typeshift"]
+    assert names[:5] == [
+        "envaudit",
+        "migration-guard",
+        "apiwatch",
+        "typeshift",
+        "locklens",
+    ]
     assert "config" in names
     assert "migrations" in names
     assert "apiwatch db" in names
@@ -214,3 +220,4 @@ def test_init_uses_detected_tools(tmp_path: Path) -> None:
     assert "[checks.migration-guard]" in content
     assert "[checks.apiwatch]" in content
     assert "# [checks.typeshift]" in content
+    assert "# [checks.locklens]" in content

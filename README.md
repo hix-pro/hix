@@ -16,8 +16,9 @@ envaudit         fail            1     0.2s  critical 1
 migration-guard  ok              0     0.1s  clean
 apiwatch         skipped         -        -  no API Watch database; run `apiwatch add` first
 typeshift        skipped         -        -  needs a source pair; add [checks.typeshift] to .hix.toml
+locklens         skipped         -        -  needs a source pair; add [checks.locklens] to .hix.toml
 
-4 tools · 1 ok · 1 failing · 2 skipped · 1 finding
+5 tools · 1 ok · 1 failing · 3 skipped · 1 finding
 
 Run a tool directly for the full report:
   $ envaudit scan . --json --fail-on any
@@ -66,7 +67,7 @@ Run `hix check` before `.hix.toml` exists to see the auto-detected plan. Commit 
 
 ## What runs by default
 
-Without a config file, `hix` looks for four tools on `PATH` and applies these rules:
+Without a config file, `hix` looks for five tools on `PATH` and applies these rules:
 
 | Tool | Runs when | Command |
 | --- | --- | --- |
@@ -74,12 +75,13 @@ Without a config file, `hix` looks for four tools on `PATH` and applies these ru
 | `migration-guard` | a migrations directory contains `.sql` files | `migration-guard check <dir> --format json --fail-on risky` |
 | `apiwatch` | an API Watch database exists | `apiwatch check --json --fail-on-breaking` |
 | `typeshift` | only from `.hix.toml` | needs an explicit old/new pair |
+| `locklens` | only from `.hix.toml` | needs an explicit old/new lockfile pair |
 
 Migration directories are searched in this order: `migrations`, `db/migrate`, `database/migrations`, `prisma/migrations`, `supabase/migrations`, `alembic/versions`.
 
 API Watch uses `~/.apiwatch/apiwatch.db` unless `APIWATCH_DB` points elsewhere. If no database exists, the check is skipped with the command to create one.
 
-TypeShift cannot guess which two versions to compare, so `hix init` leaves a commented example instead of inventing one.
+TypeShift and LockLens cannot guess which two versions or lockfiles to compare, so `hix init` leaves commented examples instead of inventing them.
 
 ## Configuration
 
@@ -99,6 +101,10 @@ cwd = "services/api"
 [checks.typeshift]
 command = "typeshift compare ./types/v1 ./types/v2 --from 1.2.3 --to 1.3.0 --json --fail-on-breaking"
 enabled = true
+
+[checks.locklens]
+command = "locklens diff .locklens/base/package-lock.json package-lock.json --fail-on warning --json"
+enabled = true
 ```
 
 | Key | Default | Meaning |
@@ -109,7 +115,7 @@ enabled = true
 
 Commands are executed directly, not through a shell. Pipes, redirects, and `&&` are not interpreted; put those in a script and call the script instead.
 
-`hix init` writes the detected commands, then adds a commented TypeShift example. Existing configs are never overwritten unless you pass `--force`.
+`hix init` writes the detected commands, then adds commented TypeShift and LockLens examples. Existing configs are never overwritten unless you pass `--force`.
 
 ## Commands
 
@@ -143,6 +149,7 @@ envaudit         installed   /usr/local/bin/envaudit · envaudit 0.3.1
 migration-guard  installed   /usr/local/bin/migration-guard · migration-guard 0.2.0
 apiwatch         missing     cargo install --git https://github.com/hix-pro/api-watch
 typeshift        missing     git clone https://github.com/hix-pro/typeshift && cd typeshift && npm ci && npm run build && npm link
+locklens         missing     cargo install --git https://github.com/hix-pro/locklens
 config           none        run `hix init` to create .hix.toml
 migrations       found       db/migrations
 apiwatch db      none        /home/you/.apiwatch/apiwatch.db
@@ -156,7 +163,7 @@ Write `.hix.toml` from the auto-detected plan. `--print` writes the config to st
 
 ### `hix version`
 
-Print `hix 0.1.0`. `--json` returns `{"name": "hix", "version": "0.1.0"}`.
+Print `hix 0.2.0`. `--json` returns `{"name": "hix", "version": "0.2.0"}`.
 
 ## Exit codes
 
@@ -225,6 +232,7 @@ Finding counts are read from each tool's own summary:
 | Migration Guard | `summary.findings` |
 | API Watch | total `changes` across targets, or `breaking + compatible` |
 | TypeShift | `summary.total` |
+| LockLens | `summary.total` |
 
 An unrecognized report falls back to counting `findings` or `changes` arrays. If none of those exist, the tool's exit code still decides between `ok` and `error`.
 
@@ -277,6 +285,7 @@ Cache the Cargo installs in a real workflow; the example is shortened for readab
 - [Migration Guard](https://github.com/hix-pro/migration-guard) — destructive SQL and blocking DDL before it reaches a database
 - [API Watch](https://github.com/hix-pro/api-watch) — OpenAPI and JSON contract diffs
 - [TypeShift](https://github.com/hix-pro/typeshift) — semantic TypeScript declaration diffs
+- [LockLens](https://github.com/hix-pro/locklens) — lockfile upgrades, downgrades, and checksum or source drift
 - [All hix tools](https://github.com/topics/hix-tools)
 
 ## License

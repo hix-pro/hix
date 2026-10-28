@@ -31,6 +31,10 @@ TOOLS = {
             "&& npm ci && npm run build && npm link"
         ),
     },
+    "locklens": {
+        "binary": "locklens",
+        "install": "cargo install --git https://github.com/hix-pro/locklens",
+    },
 }
 
 MIGRATION_DIRS = (
@@ -213,6 +217,19 @@ def auto_plan(root: Path) -> list[PlanItem]:
         )
     )
 
+    locklens = _which("locklens")
+    plan.append(
+        PlanItem(
+            name="locklens",
+            reason=(
+                "needs a source pair; add [checks.locklens] to .hix.toml"
+                if locklens
+                else "locklens is not on PATH"
+            ),
+            install=TOOLS["locklens"]["install"],
+        )
+    )
+
     return plan
 
 
@@ -335,6 +352,12 @@ def init_config(root: Path) -> str:
             "# [checks.typeshift]",
             '# command = "typeshift compare ./types/v1 ./types/v2 '
             '--from 1.2.3 --to 1.3.0 --json --fail-on-breaking"',
+            "# enabled = true",
+            "",
+            "# LockLens needs an old and a new lockfile.",
+            "# [checks.locklens]",
+            '# command = "locklens diff .locklens/base/package-lock.json '
+            'package-lock.json --fail-on warning --json"',
             "# enabled = true",
             "",
         ]

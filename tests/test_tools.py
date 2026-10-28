@@ -125,10 +125,12 @@ def test_auto_plan_skips_missing_tools(tmp_path: Path) -> None:
         "migration-guard",
         "apiwatch",
         "typeshift",
+        "locklens",
     ]
     assert all(not item.runs for item in plan)
     assert "not on PATH" in (plan[0].reason or "")
     assert "not on PATH" in (plan[3].reason or "")
+    assert "not on PATH" in (plan[4].reason or "")
 
 
 def test_auto_plan_detects_installed_tools(tmp_path: Path) -> None:
@@ -160,6 +162,8 @@ def test_auto_plan_detects_installed_tools(tmp_path: Path) -> None:
     assert by_name["apiwatch"].argv is not None
     assert "--fail-on-breaking" in by_name["apiwatch"].argv
     assert not by_name["typeshift"].runs
+    assert not by_name["locklens"].runs
+    assert "checks.locklens" in (by_name["locklens"].reason or "")
 
 
 def test_auto_plan_skips_migrations_without_sql(tmp_path: Path) -> None:
@@ -207,6 +211,9 @@ def test_init_config_uses_short_binary_names(tmp_path: Path) -> None:
     assert "# [checks.typeshift]" in content
     assert "typeshift compare" in content
     assert "\n[checks.typeshift]\n" not in content
+    assert "# [checks.locklens]" in content
+    assert "locklens diff" in content
+    assert "\n[checks.locklens]\n" not in content
 
 
 def test_init_config_without_tools_explains_what_to_do(tmp_path: Path) -> None:

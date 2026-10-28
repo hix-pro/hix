@@ -219,7 +219,7 @@ def cmd_doctor(args: argparse.Namespace) -> int:
     else:
         print_doctor(rows, no_color=args.no_color)
 
-    required = {"envaudit", "migration-guard", "apiwatch", "typeshift"}
+    required = {"envaudit", "migration-guard", "apiwatch", "typeshift", "locklens"}
     missing = [
         row["name"] for row in rows if row["name"] in required and row["status"] == "missing"
     ]
@@ -237,7 +237,7 @@ def cmd_doctor(args: argparse.Namespace) -> int:
                 )
             )
         else:
-            print(paint("All four tools are installed.", GREEN, enabled))
+            print(paint("All five tools are installed.", GREEN, enabled))
     return 0
 
 
