@@ -24,6 +24,10 @@ TOOLS = {
         "binary": "apiwatch",
         "install": "cargo install --git https://github.com/hix-pro/api-watch",
     },
+    "planguard": {
+        "binary": "planguard",
+        "install": "cargo install --git https://github.com/hix-pro/planguard",
+    },
     "typeshift": {
         "binary": "typeshift",
         "install": (
@@ -36,6 +40,12 @@ TOOLS = {
         "install": "cargo install --git https://github.com/hix-pro/locklens",
     },
 }
+
+PLAN_FILES = (
+    ".planguard/plan.json",
+    "plan.json",
+    "tfplan.json",
+)
 
 MIGRATION_DIRS = (
     "migrations",
@@ -88,6 +98,14 @@ def find_migrations(root: Path) -> Path | None:
     return None
 
 
+def find_plan(root: Path) -> Path | None:
+    for relative in PLAN_FILES:
+        candidate = root / relative
+        if candidate.is_file():
+            return candidate
+    return None
+
+
 def load_config(path: Path) -> dict:
     try:
         return tomllib.loads(path.read_text(encoding="utf-8"))
@@ -132,7 +150,7 @@ def _which(binary: str) -> str | None:
 def auto_plan(root: Path) -> list[PlanItem]:
     plan: list[PlanItem] = []
 
-    for name in ("envaudit", "migration-guard", "apiwatch"):
+    for name in ("envaudit", "migration-guard", "apiwatch", "planguard"):
         info = TOOLS[name]
         if not _which(info["binary"]):
             plan.append(
@@ -204,6 +222,36 @@ def auto_plan(root: Path) -> list[PlanItem]:
                 )
             )
 
+    planguard = _which("planguard")
+    if planguard:
+        plan_file = find_plan(root)
+        if plan_file:
+            plan.append(
+                PlanItem(
+                    name="planguard",
+                    argv=[
+                        "planguard",
+                        "review",
+                        str(plan_file.relative_to(root)),
+                        "--json",
+                        "--fail-on",
+                        "error",
+                    ],
+                    cwd=root,
+                    install=TOOLS["planguard"]["install"],
+                )
+            )
+        else:
+            plan.append(
+                PlanItem(
+                    name="planguard",
+                    reason=(
+                        "no Terraform plan JSON; run `terraform show -json tfplan > plan.json`"
+                    ),
+                    install=TOOLS["planguard"]["install"],
+                )
+            )
+
     typeshift = _which("typeshift")
     plan.append(
         PlanItem(
@@ -269,6 +317,7 @@ def doctor(root: Path, config_path: str | None = None) -> list[dict[str, str]]:
     root = root.resolve()
     config = find_config(root, config_path)
     migrations = find_migrations(root)
+    plan = find_plan(root)
     db = Path(os.environ.get("APIWATCH_DB", "~/.apiwatch/apiwatch.db")).expanduser()
     rows: list[dict[str, str]] = []
 
@@ -296,6 +345,15 @@ def doctor(root: Path, config_path: str | None = None) -> list[dict[str, str]]:
             "detail": str(migrations.relative_to(root))
             if migrations
             else "no .sql migrations detected",
+        }
+    )
+    rows.append(
+        {
+            "name": "plan",
+            "status": "found" if plan else "none",
+            "detail": str(plan.relative_to(root))
+            if plan
+            else "no Terraform plan JSON; run `terraform show -json tfplan > plan.json`",
         }
     )
     rows.append(
@@ -358,6 +416,11 @@ def init_config(root: Path) -> str:
             "# [checks.locklens]",
             '# command = "locklens diff .locklens/base/package-lock.json '
             'package-lock.json --fail-on warning --json"',
+            "# enabled = true",
+            "",
+            "# PlanGuard needs Terraform plan JSON from `terraform show -json`.",
+            "# [checks.planguard]",
+            '# command = "planguard review plan.json --json --fail-on error"',
             "# enabled = true",
             "",
         ]

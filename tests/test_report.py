@@ -70,6 +70,31 @@ def test_table_summary_and_rerun_hint(capsys) -> None:
     assert "  $ envaudit scan . --json --fail-on any" in output
 
 
+def test_plan_guard_detail_uses_severity_counts(capsys) -> None:
+    results = [
+        RunResult(
+            name="planguard",
+            status="fail",
+            exit_code=2,
+            duration_ms=42,
+            command="planguard review plan.json --json --fail-on error",
+            findings=12,
+            summary={
+                "total": 12,
+                "critical": 5,
+                "error": 2,
+                "warning": 4,
+                "info": 1,
+            },
+        )
+    ]
+    print_results(results, no_color=True)
+    output = capsys.readouterr().out
+
+    assert "critical 5, error 2, warning 4, info 1" in output
+    assert "12 findings" in output
+
+
 def test_verbose_prints_command(capsys) -> None:
     print_results(sample_results(), no_color=True, verbose=True)
     output = capsys.readouterr().out

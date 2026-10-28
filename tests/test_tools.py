@@ -12,6 +12,7 @@ from hix.tools import (
     doctor,
     find_config,
     find_migrations,
+    find_plan,
     init_config,
     load_config,
     tool_version,
@@ -34,6 +35,22 @@ def test_find_migrations_prefers_earlier_known_directory(tmp_path: Path) -> None
     (tmp_path / "migrations" / "001.sql").write_text("select 1;", encoding="utf-8")
 
     assert find_migrations(tmp_path) == tmp_path / "migrations"
+
+
+def test_find_plan_prefers_the_tool_directory(tmp_path: Path) -> None:
+    assert find_plan(tmp_path) is None
+
+    (tmp_path / "plan.json").write_text("{}", encoding="utf-8")
+    assert find_plan(tmp_path) == tmp_path / "plan.json"
+
+    (tmp_path / ".planguard").mkdir()
+    (tmp_path / ".planguard" / "plan.json").write_text("{}", encoding="utf-8")
+    assert find_plan(tmp_path) == tmp_path / ".planguard" / "plan.json"
+
+    (tmp_path / ".planguard" / "plan.json").unlink()
+    (tmp_path / "plan.json").unlink()
+    (tmp_path / "tfplan.json").write_text("{}", encoding="utf-8")
+    assert find_plan(tmp_path) == tmp_path / "tfplan.json"
 
 
 def test_find_config_prefers_dot_hix(tmp_path: Path) -> None:
@@ -124,6 +141,7 @@ def test_auto_plan_skips_missing_tools(tmp_path: Path) -> None:
         "envaudit",
         "migration-guard",
         "apiwatch",
+        "planguard",
         "typeshift",
         "locklens",
     ]
@@ -131,6 +149,7 @@ def test_auto_plan_skips_missing_tools(tmp_path: Path) -> None:
     assert "not on PATH" in (plan[0].reason or "")
     assert "not on PATH" in (plan[3].reason or "")
     assert "not on PATH" in (plan[4].reason or "")
+    assert "not on PATH" in (plan[5].reason or "")
 
 
 def test_auto_plan_detects_installed_tools(tmp_path: Path) -> None:
@@ -161,9 +180,30 @@ def test_auto_plan_detects_installed_tools(tmp_path: Path) -> None:
     assert "migrations" in by_name["migration-guard"].argv
     assert by_name["apiwatch"].argv is not None
     assert "--fail-on-breaking" in by_name["apiwatch"].argv
+    assert not by_name["planguard"].runs
+    assert "Terraform plan" in (by_name["planguard"].reason or "")
     assert not by_name["typeshift"].runs
     assert not by_name["locklens"].runs
     assert "checks.locklens" in (by_name["locklens"].reason or "")
+
+
+def test_auto_plan_runs_planguard_when_a_plan_exists(tmp_path: Path) -> None:
+    (tmp_path / ".planguard").mkdir()
+    (tmp_path / ".planguard" / "plan.json").write_text("{}", encoding="utf-8")
+
+    with patch("hix.tools._which", return_value="/usr/bin/planguard"):
+        plan, _ = build_plan(tmp_path)
+
+    planguard = next(item for item in plan if item.name == "planguard")
+    assert planguard.argv == [
+        "planguard",
+        "review",
+        ".planguard/plan.json",
+        "--json",
+        "--fail-on",
+        "error",
+    ]
+    assert planguard.cwd == tmp_path.resolve()
 
 
 def test_auto_plan_skips_migrations_without_sql(tmp_path: Path) -> None:
@@ -214,6 +254,9 @@ def test_init_config_uses_short_binary_names(tmp_path: Path) -> None:
     assert "# [checks.locklens]" in content
     assert "locklens diff" in content
     assert "\n[checks.locklens]\n" not in content
+    assert "# [checks.planguard]" in content
+    assert "planguard review" in content
+    assert "\n[checks.planguard]\n" not in content
 
 
 def test_init_config_without_tools_explains_what_to_do(tmp_path: Path) -> None:
@@ -236,6 +279,7 @@ def test_doctor_reports_missing_tools_and_state(tmp_path: Path) -> None:
     assert "cargo install" in by_name["envaudit"]["detail"]
     assert by_name["config"]["status"] == "none"
     assert by_name["migrations"]["status"] == "none"
+    assert by_name["plan"]["status"] == "none"
     assert by_name["apiwatch db"]["status"] == "none"
 
 
@@ -243,6 +287,7 @@ def test_doctor_reports_found_entries(tmp_path: Path) -> None:
     (tmp_path / ".hix.toml").write_text("[checks]\n", encoding="utf-8")
     (tmp_path / "migrations").mkdir()
     (tmp_path / "migrations" / "001.sql").write_text("select 1;", encoding="utf-8")
+    (tmp_path / "plan.json").write_text("{}", encoding="utf-8")
     db = tmp_path / "apiwatch.db"
     db.write_text("", encoding="utf-8")
 
@@ -258,6 +303,8 @@ def test_doctor_reports_found_entries(tmp_path: Path) -> None:
     assert "0.3.1" in by_name["envaudit"]["detail"]
     assert by_name["config"]["status"] == "found"
     assert by_name["migrations"]["status"] == "found"
+    assert by_name["plan"]["status"] == "found"
+    assert by_name["plan"]["detail"] == "plan.json"
     assert by_name["apiwatch db"]["status"] == "found"
 
 

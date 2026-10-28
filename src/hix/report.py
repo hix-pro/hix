@@ -61,13 +61,14 @@ def _detail(result: RunResult) -> str:
             if isinstance(value, int) and value:
                 parts.append(f"{key} {value}")
         return ", ".join(parts)
-    if result.name == "envaudit" and summary:
+    if summary and any(key in summary for key in ("critical", "error", "warning", "info")):
         parts = []
         for key in ("critical", "error", "warning", "info"):
             value = summary.get(key)
             if isinstance(value, int) and value:
                 parts.append(f"{key} {value}")
-        return ", ".join(parts)
+        if parts:
+            return ", ".join(parts)
     if result.name == "typeshift" and summary:
         parts = []
         for key in ("breaking", "compatible"):

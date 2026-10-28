@@ -15,10 +15,11 @@ TOOL             STATUS   FINDINGS     TIME  DETAIL
 envaudit         fail            1     0.2s  critical 1
 migration-guard  ok              0     0.1s  clean
 apiwatch         skipped         -        -  no API Watch database; run `apiwatch add` first
+planguard        skipped         -        -  no Terraform plan JSON; run `terraform show -json tfplan > plan.json`
 typeshift        skipped         -        -  needs a source pair; add [checks.typeshift] to .hix.toml
 locklens         skipped         -        -  needs a source pair; add [checks.locklens] to .hix.toml
 
-5 tools · 1 ok · 1 failing · 3 skipped · 1 finding
+6 tools · 1 ok · 1 failing · 4 skipped · 1 finding
 
 Run a tool directly for the full report:
   $ envaudit scan . --json --fail-on any
@@ -67,13 +68,14 @@ Run `hix check` before `.hix.toml` exists to see the auto-detected plan. Commit 
 
 ## What runs by default
 
-Without a config file, `hix` looks for five tools on `PATH` and applies these rules:
+Without a config file, `hix` looks for six tools on `PATH` and applies these rules:
 
 | Tool | Runs when | Command |
 | --- | --- | --- |
 | `envaudit` | always, if installed | `envaudit scan . --json --fail-on any` |
 | `migration-guard` | a migrations directory contains `.sql` files | `migration-guard check <dir> --format json --fail-on risky` |
 | `apiwatch` | an API Watch database exists | `apiwatch check --json --fail-on-breaking` |
+| `planguard` | a plan exists at `.planguard/plan.json`, `plan.json`, or `tfplan.json` | `planguard review <plan> --json --fail-on error` |
 | `typeshift` | only from `.hix.toml` | needs an explicit old/new pair |
 | `locklens` | only from `.hix.toml` | needs an explicit old/new lockfile pair |
 
@@ -81,7 +83,9 @@ Migration directories are searched in this order: `migrations`, `db/migrate`, `d
 
 API Watch uses `~/.apiwatch/apiwatch.db` unless `APIWATCH_DB` points elsewhere. If no database exists, the check is skipped with the command to create one.
 
-TypeShift and LockLens cannot guess which two versions or lockfiles to compare, so `hix init` leaves commented examples instead of inventing them.
+PlanGuard reads Terraform plan JSON, not a binary plan file. Generate one with `terraform plan -out=tfplan` and `terraform show -json tfplan > plan.json`. It runs automatically when that file exists, with `--fail-on error`, so critical and error findings fail the suite while warnings stay visible.
+
+TypeShift and LockLens cannot guess which two versions or lockfiles to compare, so `hix init` leaves commented examples instead of inventing them. PlanGuard gets a commented example when no plan file is present.
 
 ## Configuration
 
@@ -97,6 +101,10 @@ enabled = true
 command = "migration-guard check db/migrations --format json --fail-on risky"
 enabled = true
 cwd = "services/api"
+
+[checks.planguard]
+command = "planguard review plan.json --json --fail-on error"
+enabled = true
 
 [checks.typeshift]
 command = "typeshift compare ./types/v1 ./types/v2 --from 1.2.3 --to 1.3.0 --json --fail-on-breaking"
@@ -115,7 +123,7 @@ enabled = true
 
 Commands are executed directly, not through a shell. Pipes, redirects, and `&&` are not interpreted; put those in a script and call the script instead.
 
-`hix init` writes the detected commands, then adds commented TypeShift and LockLens examples. Existing configs are never overwritten unless you pass `--force`.
+`hix init` writes the detected commands, then adds commented TypeShift, LockLens, and PlanGuard examples. Existing configs are never overwritten unless you pass `--force`.
 
 ## Commands
 
@@ -139,7 +147,7 @@ Tools run in parallel by default. Results are always printed in plan order, not 
 
 ### `hix doctor [PATH]`
 
-Show each tool's path and version, whether a config was found, whether a migrations directory was found, and whether the API Watch database exists.
+Show each tool's path and version, whether a config was found, whether a migrations directory or plan file was found, and whether the API Watch database exists.
 
 ```console
 $ hix doctor
@@ -148,10 +156,12 @@ CHECK            STATUS      DETAIL
 envaudit         installed   /usr/local/bin/envaudit · envaudit 0.3.1
 migration-guard  installed   /usr/local/bin/migration-guard · migration-guard 0.2.0
 apiwatch         missing     cargo install --git https://github.com/hix-pro/api-watch
+planguard        missing     cargo install --git https://github.com/hix-pro/planguard
 typeshift        missing     git clone https://github.com/hix-pro/typeshift && cd typeshift && npm ci && npm run build && npm link
 locklens         missing     cargo install --git https://github.com/hix-pro/locklens
 config           none        run `hix init` to create .hix.toml
 migrations       found       db/migrations
+plan             found       plan.json
 apiwatch db      none        /home/you/.apiwatch/apiwatch.db
 ```
 
@@ -163,7 +173,7 @@ Write `.hix.toml` from the auto-detected plan. `--print` writes the config to st
 
 ### `hix version`
 
-Print `hix 0.2.0`. `--json` returns `{"name": "hix", "version": "0.2.0"}`.
+Print `hix 0.3.0`. `--json` returns `{"name": "hix", "version": "0.3.0"}`.
 
 ## Exit codes
 
@@ -233,6 +243,7 @@ Finding counts are read from each tool's own summary:
 | API Watch | total `changes` across targets, or `breaking + compatible` |
 | TypeShift | `summary.total` |
 | LockLens | `summary.total` |
+| PlanGuard | `summary.total` |
 
 An unrecognized report falls back to counting `findings` or `changes` arrays. If none of those exist, the tool's exit code still decides between `ok` and `error`.
 
@@ -286,6 +297,7 @@ Cache the Cargo installs in a real workflow; the example is shortened for readab
 - [API Watch](https://github.com/hix-pro/api-watch) — OpenAPI and JSON contract diffs
 - [TypeShift](https://github.com/hix-pro/typeshift) — semantic TypeScript declaration diffs
 - [LockLens](https://github.com/hix-pro/locklens) — lockfile upgrades, downgrades, and checksum or source drift
+- [PlanGuard](https://github.com/hix-pro/planguard) — destructive, public, and unencrypted Terraform plan changes
 - [All hix tools](https://github.com/topics/hix-tools)
 
 ## License
