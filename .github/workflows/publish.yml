@@ -10,8 +10,9 @@ name: Publish to PyPI
 #   Workflow name: publish.yml
 #   Environment name: pypi
 #
-# Then publish a GitHub release. The workflow builds the sdist and wheel,
-# checks them with Twine, and uploads them with the `pypi` environment.
+# Then set the repository variable PYPI_PUBLISH=true and publish a GitHub
+# release. The workflow builds the sdist and wheel, checks them with Twine,
+# and uploads them with the `pypi` environment.
 
 on:
   release:
@@ -41,6 +42,10 @@ jobs:
 
   publish:
     needs: build
+    # Publishing stays off until the repository variable PYPI_PUBLISH is set to
+    # true (Settings -> Secrets and variables -> Actions -> Variables). The
+    # build job still verifies every release package.
+    if: ${{ vars.PYPI_PUBLISH == 'true' }}
     runs-on: ubuntu-latest
     environment:
       name: pypi
