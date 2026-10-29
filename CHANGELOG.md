@@ -2,6 +2,18 @@
 
 All notable changes to `hix` are documented here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses [Semantic Versioning](https://semver.org/).
 
+## [0.4.0] - 2026-10-29
+
+### Added
+
+- Migration Guard 0.4.0 framework discovery: `hix` asks `migration-guard discover` for the project's SQL migration directories and passes every one to `check`. This covers Flyway, Liquibase, Prisma, Drizzle, Supabase, generic layouts, and nested monorepos.
+- `hix doctor` lists every discovered migration directory instead of only the first match.
+
+### Changed
+
+- When Migration Guard is missing, older than 0.4.0, or its discovery fails, `hix` falls back to the built-in directory list. Projects that already worked keep working.
+- The skipped-check reason is now `no SQL migration directories found`.
+
 ## [0.3.0] - 2026-10-28
 
 ### Added
@@ -34,6 +46,7 @@ All notable changes to `hix` are documented here. The format follows [Keep a Cha
 - Distinct `fail` and `error` states; missing tools are `skipped`, never `ok`.
 - Python 3.11+ package, typed public modules, MIT license.
 
+[0.4.0]: https://github.com/hix-pro/hix/releases/tag/v0.4.0
 [0.3.0]: https://github.com/hix-pro/hix/releases/tag/v0.3.0
 [0.2.0]: https://github.com/hix-pro/hix/releases/tag/v0.2.0
 [0.1.0]: https://github.com/hix-pro/hix/releases/tag/v0.1.0

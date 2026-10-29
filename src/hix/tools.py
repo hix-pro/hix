@@ -47,6 +47,9 @@ PLAN_FILES = (
     "tfplan.json",
 )
 
+# Fallback for Migration Guard versions older than 0.4.0, which did not ship
+# the `discover` command. Migration Guard's own discovery is preferred because
+# it also understands Flyway, Liquibase, Drizzle, and nested monorepo layouts.
 MIGRATION_DIRS = (
     "migrations",
     "db/migrate",
@@ -89,6 +92,7 @@ def find_config(root: Path, explicit: str | None = None) -> Path | None:
 
 
 def find_migrations(root: Path) -> Path | None:
+    """Return the first known migration directory, for old Migration Guard binaries."""
     for relative in MIGRATION_DIRS:
         candidate = root / relative
         if not candidate.is_dir():
@@ -96,6 +100,74 @@ def find_migrations(root: Path) -> Path | None:
         if any(candidate.rglob("*.sql")):
             return candidate
     return None
+
+
+def discover_migrations(root: Path, binary: str | None = None) -> list[Path]:
+    """Find SQL migration directories, preferring Migration Guard's discovery.
+
+    Migration Guard 0.4.0+ reports Flyway, Liquibase, Prisma, Drizzle, Supabase,
+    and generic migration layouts, including nested monorepo paths. If the
+    binary is missing, older than 0.4.0, or fails for any reason, keep working
+    with the small built-in list in ``MIGRATION_DIRS``.
+    """
+    root = root.resolve()
+    guard = binary or _which("migration-guard")
+    if guard:
+        discovered = _guard_discovery(guard, root)
+        if discovered:
+            return discovered
+    fallback = find_migrations(root)
+    return [fallback] if fallback else []
+
+
+def _guard_discovery(binary: str, root: Path) -> list[Path]:
+    """Ask Migration Guard what it would scan. Returns [] when it cannot tell."""
+    try:
+        result = subprocess.run(
+            [binary, "discover", ".", "--format", "json"],
+            cwd=root,
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return []
+    if result.returncode != 0:
+        return []
+
+    try:
+        payload = json.loads(result.stdout)
+    except json.JSONDecodeError:
+        return []
+
+    directories = payload.get("directories") if isinstance(payload, dict) else None
+    if not isinstance(directories, list):
+        return []
+
+    found: list[Path] = []
+    seen: set[Path] = set()
+    for entry in directories:
+        path = entry.get("path") if isinstance(entry, dict) else None
+        if not isinstance(path, str) or not path:
+            return []
+        candidate = (root / path).resolve()
+        try:
+            candidate.relative_to(root)
+        except ValueError:
+            continue
+        if candidate in seen or not candidate.is_dir():
+            continue
+        seen.add(candidate)
+        found.append(candidate)
+    return found
+
+
+def _relative(path: Path, root: Path) -> str:
+    """Render a path relative to the project root with forward slashes."""
+    try:
+        return path.relative_to(root).as_posix()
+    except ValueError:
+        return str(path)
 
 
 def find_plan(root: Path) -> Path | None:
@@ -174,15 +246,16 @@ def auto_plan(root: Path) -> list[PlanItem]:
 
     guard = _which("migration-guard")
     if guard:
-        migrations = find_migrations(root)
+        migrations = discover_migrations(root, guard)
         if migrations:
+            paths = [_relative(path, root) for path in migrations]
             plan.append(
                 PlanItem(
                     name="migration-guard",
                     argv=[
                         "migration-guard",
                         "check",
-                        str(migrations.relative_to(root)),
+                        *paths,
                         "--format",
                         "json",
                         "--fail-on",
@@ -196,7 +269,7 @@ def auto_plan(root: Path) -> list[PlanItem]:
             plan.append(
                 PlanItem(
                     name="migration-guard",
-                    reason="no migrations directory found",
+                    reason="no SQL migration directories found",
                     install=TOOLS["migration-guard"]["install"],
                 )
             )
@@ -316,7 +389,7 @@ def tool_version(binary: str) -> str:
 def doctor(root: Path, config_path: str | None = None) -> list[dict[str, str]]:
     root = root.resolve()
     config = find_config(root, config_path)
-    migrations = find_migrations(root)
+    migrations = discover_migrations(root)
     plan = find_plan(root)
     db = Path(os.environ.get("APIWATCH_DB", "~/.apiwatch/apiwatch.db")).expanduser()
     rows: list[dict[str, str]] = []
@@ -342,7 +415,7 @@ def doctor(root: Path, config_path: str | None = None) -> list[dict[str, str]]:
         {
             "name": "migrations",
             "status": "found" if migrations else "none",
-            "detail": str(migrations.relative_to(root))
+            "detail": ", ".join(_relative(path, root) for path in migrations)
             if migrations
             else "no .sql migrations detected",
         }

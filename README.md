@@ -73,13 +73,13 @@ Without a config file, `hix` looks for six tools on `PATH` and applies these rul
 | Tool | Runs when | Command |
 | --- | --- | --- |
 | `envaudit` | always, if installed | `envaudit scan . --json --fail-on any` |
-| `migration-guard` | a migrations directory contains `.sql` files | `migration-guard check <dir> --format json --fail-on risky` |
+| `migration-guard` | discovery finds at least one SQL migration directory | `migration-guard check <dirs> --format json --fail-on risky` |
 | `apiwatch` | an API Watch database exists | `apiwatch check --json --fail-on-breaking` |
 | `planguard` | a plan exists at `.planguard/plan.json`, `plan.json`, or `tfplan.json` | `planguard review <plan> --json --fail-on error` |
 | `typeshift` | only from `.hix.toml` | needs an explicit old/new pair |
 | `locklens` | only from `.hix.toml` | needs an explicit old/new lockfile pair |
 
-Migration directories are searched in this order: `migrations`, `db/migrate`, `database/migrations`, `prisma/migrations`, `supabase/migrations`, `alembic/versions`.
+Migration directories come from `migration-guard discover --format json` when Migration Guard 0.4.0 or newer is on `PATH`. That covers Flyway (`db/migration`), Liquibase (`db/changelog`), Prisma, Drizzle, Supabase, generic `migrations` layouts, and nested monorepo paths. `hix` passes every discovered directory to `migration-guard check`. If the binary is older than 0.4.0 or discovery fails, `hix` falls back to `migrations`, `db/migrate`, `database/migrations`, `prisma/migrations`, `supabase/migrations`, and `alembic/versions`.
 
 API Watch uses `~/.apiwatch/apiwatch.db` unless `APIWATCH_DB` points elsewhere. If no database exists, the check is skipped with the command to create one.
 
@@ -147,20 +147,20 @@ Tools run in parallel by default. Results are always printed in plan order, not 
 
 ### `hix doctor [PATH]`
 
-Show each tool's path and version, whether a config was found, whether a migrations directory or plan file was found, and whether the API Watch database exists.
+Show each tool's path and version, whether a config was found, which SQL migration directories were discovered, whether a plan file was found, and whether the API Watch database exists.
 
 ```console
 $ hix doctor
 CHECK            STATUS      DETAIL
 ------------------------------------------------------------------------
 envaudit         installed   /usr/local/bin/envaudit · envaudit 0.3.1
-migration-guard  installed   /usr/local/bin/migration-guard · migration-guard 0.2.0
+migration-guard  installed   /usr/local/bin/migration-guard · migration-guard 0.4.0
 apiwatch         missing     cargo install --git https://github.com/hix-pro/api-watch
 planguard        missing     cargo install --git https://github.com/hix-pro/planguard
 typeshift        missing     git clone https://github.com/hix-pro/typeshift && cd typeshift && npm ci && npm run build && npm link
 locklens         missing     cargo install --git https://github.com/hix-pro/locklens
 config           none        run `hix init` to create .hix.toml
-migrations       found       db/migrations
+migrations       found       prisma/migrations, db/migration
 plan             found       plan.json
 apiwatch db      none        /home/you/.apiwatch/apiwatch.db
 ```
@@ -173,7 +173,7 @@ Write `.hix.toml` from the auto-detected plan. `--print` writes the config to st
 
 ### `hix version`
 
-Print `hix 0.3.0`. `--json` returns `{"name": "hix", "version": "0.3.0"}`.
+Print `hix 0.4.0`. `--json` returns `{"name": "hix", "version": "0.4.0"}`.
 
 ## Exit codes
 
@@ -293,7 +293,7 @@ Cache the Cargo installs in a real workflow; the example is shortened for readab
 ## Related
 
 - [EnvAudit](https://github.com/hix-pro/env-audit) — env vars that are missing, unused, undocumented, or hiding a secret
-- [Migration Guard](https://github.com/hix-pro/migration-guard) — destructive SQL and blocking DDL before it reaches a database
+- [Migration Guard](https://github.com/hix-pro/migration-guard) — framework discovery plus destructive SQL and blocking DDL checks before they reach a database
 - [API Watch](https://github.com/hix-pro/api-watch) — OpenAPI and JSON contract diffs
 - [TypeShift](https://github.com/hix-pro/typeshift) — semantic TypeScript declaration diffs
 - [LockLens](https://github.com/hix-pro/locklens) — lockfile upgrades, downgrades, and checksum or source drift

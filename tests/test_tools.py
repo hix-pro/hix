@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import json
 import os
+import subprocess
 from pathlib import Path
 from unittest.mock import patch
 
@@ -9,6 +11,7 @@ import pytest
 from hix.tools import (
     PlanItem,
     build_plan,
+    discover_migrations,
     doctor,
     find_config,
     find_migrations,
@@ -35,6 +38,61 @@ def test_find_migrations_prefers_earlier_known_directory(tmp_path: Path) -> None
     (tmp_path / "migrations" / "001.sql").write_text("select 1;", encoding="utf-8")
 
     assert find_migrations(tmp_path) == tmp_path / "migrations"
+
+
+def _guard_output(*paths: str) -> subprocess.CompletedProcess[str]:
+    payload = {"directories": [{"path": path} for path in paths]}
+    return subprocess.CompletedProcess([], 0, json.dumps(payload), "")
+
+
+def test_discover_migrations_uses_guard_discovery(tmp_path: Path) -> None:
+    (tmp_path / "prisma" / "migrations").mkdir(parents=True)
+    (tmp_path / "services" / "api" / "db" / "migration").mkdir(parents=True)
+
+    with patch(
+        "hix.tools.subprocess.run",
+        return_value=_guard_output("prisma/migrations", "services/api/db/migration"),
+    ):
+        found = discover_migrations(tmp_path, binary="/usr/bin/migration-guard")
+
+    assert [path.relative_to(tmp_path).as_posix() for path in found] == [
+        "prisma/migrations",
+        "services/api/db/migration",
+    ]
+
+
+def test_discover_migrations_falls_back_for_older_guard(tmp_path: Path) -> None:
+    (tmp_path / "migrations").mkdir()
+    (tmp_path / "migrations" / "001.sql").write_text("select 1;", encoding="utf-8")
+
+    old_guard = subprocess.CompletedProcess([], 1, "", "unrecognized subcommand")
+    with patch("hix.tools.subprocess.run", return_value=old_guard):
+        found = discover_migrations(tmp_path, binary="/usr/bin/migration-guard")
+
+    assert found == [tmp_path / "migrations"]
+
+
+def test_discover_migrations_falls_back_when_guard_is_empty(tmp_path: Path) -> None:
+    (tmp_path / "db" / "migrate").mkdir(parents=True)
+    (tmp_path / "db" / "migrate" / "001.sql").write_text("select 1;", encoding="utf-8")
+
+    with patch("hix.tools.subprocess.run", return_value=_guard_output()):
+        found = discover_migrations(tmp_path, binary="/usr/bin/migration-guard")
+
+    assert found == [tmp_path / "db" / "migrate"]
+
+
+def test_discover_migrations_ignores_paths_outside_the_root(tmp_path: Path) -> None:
+    outside = tmp_path.parent / "outside-migrations"
+    outside.mkdir(exist_ok=True)
+
+    with patch(
+        "hix.tools.subprocess.run",
+        return_value=_guard_output("../outside-migrations"),
+    ):
+        found = discover_migrations(tmp_path, binary="/usr/bin/migration-guard")
+
+    assert found == []
 
 
 def test_find_plan_prefers_the_tool_directory(tmp_path: Path) -> None:
@@ -187,6 +245,55 @@ def test_auto_plan_detects_installed_tools(tmp_path: Path) -> None:
     assert "checks.locklens" in (by_name["locklens"].reason or "")
 
 
+def test_auto_plan_checks_every_discovered_directory(tmp_path: Path) -> None:
+    (tmp_path / "prisma" / "migrations").mkdir(parents=True)
+    (tmp_path / "services" / "api" / "src" / "main" / "resources" / "db" / "migration").mkdir(
+        parents=True
+    )
+
+    with (
+        patch("hix.tools._which", return_value="/usr/local/bin/migration-guard"),
+        patch(
+            "hix.tools.subprocess.run",
+            return_value=_guard_output(
+                "prisma/migrations",
+                "services/api/src/main/resources/db/migration",
+            ),
+        ),
+    ):
+        plan, _ = build_plan(tmp_path)
+
+    guard = next(item for item in plan if item.name == "migration-guard")
+    assert guard.argv == [
+        "migration-guard",
+        "check",
+        "prisma/migrations",
+        "services/api/src/main/resources/db/migration",
+        "--format",
+        "json",
+        "--fail-on",
+        "risky",
+    ]
+    assert guard.cwd == tmp_path.resolve()
+
+
+def test_auto_plan_uses_flyway_layout_from_discovery(tmp_path: Path) -> None:
+    (tmp_path / "src" / "main" / "resources" / "db" / "migration").mkdir(parents=True)
+
+    with (
+        patch("hix.tools._which", return_value="/usr/local/bin/migration-guard"),
+        patch(
+            "hix.tools.subprocess.run",
+            return_value=_guard_output("src/main/resources/db/migration"),
+        ),
+    ):
+        plan, _ = build_plan(tmp_path)
+
+    guard = next(item for item in plan if item.name == "migration-guard")
+    assert guard.runs
+    assert "src/main/resources/db/migration" in (guard.argv or [])
+
+
 def test_auto_plan_runs_planguard_when_a_plan_exists(tmp_path: Path) -> None:
     (tmp_path / ".planguard").mkdir()
     (tmp_path / ".planguard" / "plan.json").write_text("{}", encoding="utf-8")
@@ -215,7 +322,7 @@ def test_auto_plan_skips_migrations_without_sql(tmp_path: Path) -> None:
 
     guard = next(item for item in plan if item.name == "migration-guard")
     assert not guard.runs
-    assert guard.reason == "no migrations directory found"
+    assert guard.reason == "no SQL migration directories found"
 
 
 def test_auto_plan_skips_apiwatch_without_database(tmp_path: Path) -> None:

@@ -52,13 +52,13 @@ def project(tmp_path: Path) -> Path:
 
 def test_version_plain(capsys) -> None:
     assert main(["version"]) == 0
-    assert capsys.readouterr().out.strip() == "hix 0.3.0"
+    assert capsys.readouterr().out.strip() == "hix 0.4.0"
 
 
 def test_version_json(capsys) -> None:
     assert main(["version", "--json"]) == 0
     payload = json.loads(capsys.readouterr().out)
-    assert payload == {"name": "hix", "version": "0.3.0"}
+    assert payload == {"name": "hix", "version": "0.4.0"}
 
 
 def test_no_command_prints_help(capsys) -> None:
